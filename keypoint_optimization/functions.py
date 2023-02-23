@@ -34,12 +34,21 @@ import tensorflow as tf
 ################### functions for prepare dataset #################
 
 def format_training_data(label_file,train_index, feature_idx, project_path):
+    print("Label_file: ", label_file)
+    print("TRAIN_INDEX: ", train_index)
+    print("FEATURE_IDX: ", feature_idx)
+    print("PROJECT_PATH: ", project_path)
+    
     train_data = []
     matlab_data = []
     infile = open(label_file,'rb')
     df = pickle.load(infile)
     infile.close()
     key_list = list(df.keys())
+    
+    print("DF: ", df)
+    
+    print("KEY_LIST: ", key_list)
 
 
     def to_matlab_cell(array):
@@ -51,10 +60,77 @@ def format_training_data(label_file,train_index, feature_idx, project_path):
         return cv2.imread(path).shape
 
     for i in train_index:
+        print("i: ", i)
         data = dict()
         # get image path
         filename = key_list[i] #string e.g "labeled-data/video_1/frame105_LEFT_half.png"
+        print("FILENAME: ", filename)
         data['image'] = filename
+        if os.path.exists(filename):
+            """img_shape = _read_image_shape_fast(os.path.join(project_path, filename))
+            try:
+                data['size'] = img_shape[2], img_shape[0], img_shape[1]
+            except IndexError:
+                data['size'] = 1, img_shape[0], img_shape[1]"""
+
+
+            # get joint coordinates
+            #temp = df.iloc[i].values[1:].reshape(-1, 2).astype(float)
+            #joints = np.c_[range(nbodyparts), temp]
+            joints = df[filename].astype(int)#joints[~np.isnan(joints).any(axis=1)].astype(int) # nX3 np.array (joint_num,x,y)
+            print("JOINTS1: ", joints)
+            joints = joints[feature_idx]
+            print("JOINTS2: ", joints)
+            joints[:,0] = list(range(len(feature_idx)))
+            print("JOINTS3: ", joints)
+
+
+            # Check that points lie within the image
+            inside = np.logical_and(np.logical_and(joints[:, 1] < img_shape[1], joints[:, 1] > 0),
+                                    np.logical_and(joints[:, 2] < img_shape[0], joints[:, 2] > 0))
+            if not all(inside):
+                joints = joints[inside]
+            if joints.size:  # Exclude images without labels
+                data['joints'] = joints
+                train_data.append(data)
+                matlab_data.append((np.array([data['image']], dtype='U'),
+                                    np.array([data['size']]),
+                                    to_matlab_cell(data['joints'])))
+                
+    matlab_data = np.asarray(matlab_data, dtype=[('image', 'O'), ('size', 'O'), ('joints', 'O')])
+    return train_data, matlab_data
+
+def format_training_data2(label_file,train_index, feature_idx, project_path):
+    print("Label_file: ", label_file)
+    print("TRAIN_INDEX: ", train_index)
+    print("FEATURE_IDX: ", feature_idx)
+    print("PROJECT_PATH: ", project_path)
+    
+    train_data = []
+    matlab_data = []
+    #infile = open(label_file,'rb')
+    #df = pickle.load(infile)
+    #infile.close()
+    #key_list = list(df.keys())
+
+
+    def to_matlab_cell(array):
+        outer = np.array([[None]], dtype=object)
+        outer[0, 0] = array.astype('int64')
+        return outer
+    
+    def _read_image_shape_fast(path):
+        return cv2.imread(path).shape
+
+    for i in train_index:
+        print("i: ", i)
+        filename = "/keypoint_optimization/evaluation/data_test/1601087743421914714.png"
+        data = dict()
+        # get image path
+        #filename = key_list[i] #string e.g "labeled-data/video_1/frame105_LEFT_half.png"
+        print("FILENAME: ", filename)
+        data['image'] = filename
+        
         if os.path.exists(filename):
             img_shape = _read_image_shape_fast(os.path.join(project_path, filename))
             try:
@@ -66,9 +142,14 @@ def format_training_data(label_file,train_index, feature_idx, project_path):
             # get joint coordinates
             #temp = df.iloc[i].values[1:].reshape(-1, 2).astype(float)
             #joints = np.c_[range(nbodyparts), temp]
-            joints = df[filename].astype(int)#joints[~np.isnan(joints).any(axis=1)].astype(int) # nX3 np.array (joint_num,x,y)
-            joints = joints[feature_idx]
-            joints[:,0] = list(range(len(feature_idx)))
+            #joints = df[filename].astype(int)#joints[~np.isnan(joints).any(axis=1)].astype(int) # nX3 np.array (joint_num,x,y)
+            #print("JOINTS1: ", joints)
+            #joints = joints[feature_idx]
+            #print("JOINTS2: ", joints)
+            #joints[:,0] = list(range(len(feature_idx)))
+            #print("JOINTS3: ", joints)
+            
+            joints = np.zeros((5, 3)) + 0.1
 
 
             # Check that points lie within the image
@@ -89,10 +170,12 @@ def format_training_data(label_file,train_index, feature_idx, project_path):
 def prepare_dataset(image_number:int, feature_idx:list, config:str):
     with open(config) as file:
         config_list = yaml.load(file, Loader=yaml.FullLoader)
+        
+    print("CONFIGS: ", config_list)
 
     project_path = config_list['project_path']
     train_index = list(range(image_number))
-    data, MatlabData = format_training_data('data',train_index, feature_idx, project_path)
+    data, MatlabData = format_training_data2('data',train_index, feature_idx, project_path)
     datafilename = "train.mat"
     sio.savemat(os.path.join(project_path,datafilename), {'dataset': MatlabData})
 
@@ -103,6 +186,8 @@ def prepare_dataset(image_number:int, feature_idx:list, config:str):
 def train_network(poseconfigfile,shuffle=1,trainingsetindex=0,
                   max_snapshots_to_keep=5,displayiters=None,saveiters=None,maxiters=None,
                   allow_growth=False,gputouse=None,autotune=False,keepdeconvweights=True):
+    maxiters=2
+    displayiters=1
 
     import tensorflow as tf
 
@@ -130,8 +215,10 @@ def train_network(poseconfigfile,shuffle=1,trainingsetindex=0,
     if gputouse is not None:
         os.environ['CUDA_VISIBLE_DEVICES'] = str(gputouse)
     try:
+        print("TRYING TO TRAIN")
         train(str(poseconfigfile),displayiters,saveiters,maxiters,max_to_keep=max_snapshots_to_keep,keepdeconvweights=keepdeconvweights,allow_growth=allow_growth) #pass on path and file name for pose_cfg.yaml!
     except BaseException as e:
+        print("EXCEPTION!")
         raise e
     finally:
         os.chdir(str(start_path))

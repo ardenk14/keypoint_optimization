@@ -1,0 +1,4 @@
+[ZoneTransfer]
+ZoneId=3
+ReferrerUrl=https://github.com/serre-lab/deeplabcut_mgh/blob/master/deeplabcut/pose_estimation_tensorflow/models/pretrained/resnet_v1_50.ckpt
+HostUrl=https://raw.githubusercontent.com/serre-lab/deeplabcut_mgh/master/deeplabcut/pose_estimation_tensorflow/models/pretrained/resnet_v1_50.ckpt
